@@ -2,3 +2,5 @@
 log/
 # result data
 result/
+# pycache
+__pycache__/
