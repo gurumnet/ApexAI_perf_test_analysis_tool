@@ -11,6 +11,7 @@ def check_dependency_dir(dirs):
          os.makedirs(_,exist_ok=True)
    
 def proecess_raw_log_file(raw_dir, out_dir):  
+  rmw_name = ""
   raw_log_files = os.listdir(raw_dir) # get files
   for log_file in raw_log_files: 
     file_path = os.path.join(raw_dir, log_file) # make relative file path
@@ -19,11 +20,13 @@ def proecess_raw_log_file(raw_dir, out_dir):
           lines = file.readlines()
           start_line = 0
           for i, line in enumerate(lines):
+            if 'RMW Implementation:' in line:
+              rmw_name = line.split(': ')[1].strip() # 콜론(:) 뒤의 값을 추출하고 공백을 제거
             if line.strip() == '---EXPERIMENT-START---': # data section
                 start_line = i + 1
                 break
       # extraction data section
-      temp_csv_name = f"{out_dir}/{log_file}.csv"
+      temp_csv_name = f"{out_dir}/{rmw_name}_{log_file}.csv"
       precessed_line = [line.replace(',', '') for line in lines[start_line:]] # remove ','
       precessed_line = [line.replace('\t\t','\t') for line in precessed_line] # remove duplicated '\t'
       with open(temp_csv_name, 'w') as file:
@@ -82,3 +85,50 @@ def draw_CPU_usage(dataframe, dds_name= "DDS"):
             + f'{dds_name}')
   ax.set_ylabel('%')
   return ax
+
+def anlasis_benchmark_to_json(dataframe):
+    dataframe_agg = dataframe.agg(['max', 'mean', 'sum', 'median'])
+
+    values = [
+        dataframe_agg.loc['mean', 'latency_mean (ms)'],
+        dataframe_agg.loc['median', 'latency_mean (ms)'],
+        dataframe['latency_mean (ms)'].describe(percentiles=[0.95]).iloc[5],
+        dataframe_agg.loc['max', 'ru_maxrss'],
+        dataframe_agg.loc['mean', 'received'],
+        dataframe_agg.loc['mean', 'sent'],
+        dataframe_agg.loc['sum', 'lost'],
+        dataframe_agg.loc['mean', 'cpu_usage (%)'],
+        dataframe['cpu_usage (%)'].describe(percentiles=[0.95]).iloc[5],
+        dataframe_agg.loc['median', 'cpu_usage (%)'],
+        dataframe_agg.loc['mean', 'data_received'] * BYTE_TO_MBYTE,
+        dataframe_agg.loc['median', 'data_received'] * BYTE_TO_MBYTE,
+        dataframe['data_received'].describe(percentiles=[0.95]).iloc[5] * BYTE_TO_MBYTE,
+    ]
+    json_values = {
+        'average_single_trip_time': {
+            'dblValue': values[0],
+            'unit': 'ms',
+        },
+        'throughput': {
+            'dblValue': values[10],
+            'unit': 'Mbit/s',
+        },
+        'max_resident_set_size': {
+            'dblValue': values[3],
+            'unit': 'MB',
+        },
+        'received_messages': {
+            'dblValue': values[4],
+        },
+        'sent_messages': {
+            'dblValue': values[5],
+        },
+        'lost_messages': {
+            'intValue': values[6],
+        },
+        'cpu_usage': {
+            'dblValue': values[8],
+            'unit': 'percent',
+        },
+    }
+    return json_values
